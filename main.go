@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -9,40 +8,56 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/natefinch/lumberjack.v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+type Signal struct {
+	TxPwr  float64
+	TxFreq float64
+	RxPwr  float64
+	RxFreq float64
+	Mer    float64
+}
+
 func main() {
+	signal := Signal{}
 
-	log.SetOutput(&lumberjack.Logger{
-		Filename: "./fibertel-stats.log",
-		MaxSize:  50,
-	})
+	go func() {
+		for {
 
-	logCurrentValues()
+			s, err := signal.getCurrentValues()
 
-	for _ = range time.Tick(time.Minute) {
-		logCurrentValues()
-	}
+			if err != nil {
+				log.Println(err.Error())
+			}
+			TxPwr.Set(s.TxPwr)
+			TxFreq.Set(s.TxFreq)
+			RxPwr.Set(s.RxPwr)
+			RxFreq.Set(s.RxFreq)
+			Mer.Set(s.Mer)
 
-}
+			time.Sleep(10 * time.Second)
+		}
+	}()
 
-func logCurrentValues() {
-
-	values, err := getCurrentValues()
-
+	http.Handle("/metrics", promhttp.Handler())
+	prometheus.MustRegister(TxPwr)
+	prometheus.MustRegister(TxFreq)
+	prometheus.MustRegister(RxPwr)
+	prometheus.MustRegister(RxFreq)
+	prometheus.MustRegister(Mer)
+	err := http.ListenAndServe(":9100", nil)
 	if err != nil {
-		log.Println("✕", err.Error())
-		fmt.Print("✕")
-	} else {
-		log.Println("✓", values)
-		fmt.Print("✓")
+		log.Println(err.Error())
 	}
 
 }
 
-func getCurrentValues() ([]string, error) {
-	url := "http://provisioning.fibertel.com.ar/asp/nivelesPrima.asp"
+func (s *Signal) getCurrentValues() (Signal, error) {
+	var signal Signal
+
+	url := "http://dameunaip.com.ar/asp/nivelesprima.asp"
 
 	timeout := time.Duration(3 * time.Second)
 
@@ -53,7 +68,7 @@ func getCurrentValues() ([]string, error) {
 	resp, err := client.Get(url)
 
 	if err != nil {
-		return nil, err
+		return signal, err
 	}
 
 	defer resp.Body.Close()
@@ -61,7 +76,7 @@ func getCurrentValues() ([]string, error) {
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return nil, err
+		return signal, err
 	}
 
 	bodyString := string(bodyBytes)
@@ -71,7 +86,6 @@ func getCurrentValues() ([]string, error) {
 	values := make([]string, 0)
 
 	for _, line := range lines {
-
 		if strings.Contains(line, "valor") {
 			line = strings.Split(line, ">")[1]
 			line = strings.Split(line, " ")[0]
@@ -81,11 +95,18 @@ func getCurrentValues() ([]string, error) {
 			if err == nil {
 				values = append(values, line)
 			}
-
 		}
-
 	}
 
-	return values, nil
+	if len(values) != 5 {
+		return signal, err
+	}
+
+	signal.TxPwr, _ = strconv.ParseFloat(values[0], 32)
+	signal.TxFreq, _ = strconv.ParseFloat(values[1], 32)
+	signal.RxPwr, _ = strconv.ParseFloat(values[2], 32)
+	signal.RxFreq, _ = strconv.ParseFloat(values[3], 32)
+	signal.Mer, _ = strconv.ParseFloat(values[4], 32)
+	return signal, nil
 
 }
