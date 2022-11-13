@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// Signal is the structure coming from the modem stats
 type Signal struct {
 	TxPwr  float64
 	TxFreq float64
@@ -59,7 +60,7 @@ func (s *Signal) getCurrentValues() (Signal, error) {
 
 	url := "http://dameunaip.com.ar/asp/nivelesprima.asp"
 
-	timeout := time.Duration(3 * time.Second)
+	timeout := time.Duration(15 * time.Second)
 
 	client := http.Client{
 		Timeout: timeout,
