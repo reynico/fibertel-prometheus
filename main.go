@@ -60,13 +60,7 @@ func (s *Signal) getCurrentValues() (Signal, error) {
 
 	url := "http://dameunaip.com.ar/asp/nivelesprima.asp"
 
-	timeout := time.Duration(15 * time.Second)
-
-	client := http.Client{
-		Timeout: timeout,
-	}
-
-	resp, err := client.Get(url)
+	resp, err := makeRequestWithExponentialBackoff(url)
 
 	if err != nil {
 		return signal, err
@@ -110,4 +104,25 @@ func (s *Signal) getCurrentValues() (Signal, error) {
 	signal.Mer, _ = strconv.ParseFloat(values[4], 32)
 	return signal, nil
 
+}
+
+func makeRequestWithExponentialBackoff(url string) (*http.Response, error) {
+	maxRetries := 5
+	retryDelay := 1 * time.Second
+
+	client := http.Client{
+		Timeout: 15 * time.Second,
+	}
+
+	for i := 0; i < maxRetries; i++ {
+		resp, err := client.Get(url)
+		if err == nil {
+			return resp, nil
+		}
+
+		delay := retryDelay * time.Duration(1<<uint(i))
+		time.Sleep(delay)
+	}
+
+	return nil, nil
 }
