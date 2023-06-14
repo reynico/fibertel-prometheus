@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -66,7 +68,12 @@ func (s *Signal) getCurrentValues() (Signal, error) {
 		return signal, err
 	}
 
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			fmt.Printf("Error getting body: %s\n", err)
+		}
+	}(resp.Body)
 
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
 
@@ -120,9 +127,12 @@ func makeRequestWithExponentialBackoff(url string) (*http.Response, error) {
 			return resp, nil
 		}
 
+		fmt.Printf("Error making request: %s\n", err)
+
 		delay := retryDelay * time.Duration(1<<uint(i))
 		time.Sleep(delay)
+		fmt.Printf("Retrying in %s...\n", delay)
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("maximum number of retries exceeded")
 }
